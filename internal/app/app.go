@@ -992,35 +992,57 @@ func detectKeyExchangeGroups() ([]string, error) {
 		if trim == "" {
 			continue
 		}
-		if strings.HasSuffix(trim, ":") {
-			section := strings.TrimSuffix(trim, ":")
-			if strings.EqualFold(section, "key exchange") {
+		if strings.Contains(trim, ":") {
+			parts := strings.SplitN(trim, ":", 2)
+			section := strings.TrimSpace(parts[0])
+			rest := ""
+			if len(parts) > 1 {
+				rest = strings.TrimSpace(parts[1])
+			}
+			if isKeyExchangeSection(section) {
 				inKE = true
-			} else if inKE {
+				if rest != "" {
+					parseKexTokens(rest, &groups)
+				}
+			} else if inKE && rest == "" {
 				break
 			}
-			continue
+			if rest == "" {
+				continue
+			}
 		}
 		if !inKE {
 			continue
 		}
-		fields := strings.Fields(trim)
-		if len(fields) == 0 {
-			continue
-		}
-		name := fields[0]
-		if idx := strings.Index(name, "["); idx >= 0 {
-			name = name[:idx]
-		}
-		name = strings.TrimSpace(name)
-		if name != "" {
-			groups = append(groups, strings.ToUpper(name))
-		}
+		parseKexTokens(trim, &groups)
 	}
 	if len(groups) == 0 {
 		return nil, errors.New("no key exchange groups found")
 	}
 	return groups, nil
+}
+
+func isKeyExchangeSection(section string) bool {
+	section = strings.ToLower(strings.TrimSpace(section))
+	switch section {
+	case "key exchange", "key exchange methods", "ke":
+		return true
+	default:
+		return false
+	}
+}
+
+func parseKexTokens(line string, groups *[]string) {
+	for _, tok := range strings.Fields(line) {
+		name := strings.Trim(tok, ",")
+		if idx := strings.Index(name, "["); idx >= 0 {
+			name = name[:idx]
+		}
+		name = strings.TrimSpace(name)
+		if name != "" {
+			*groups = append(*groups, strings.ToUpper(name))
+		}
+	}
 }
 
 func buildKexOptions(supported []string, uiOut *ui.UI) []ui.Option {
