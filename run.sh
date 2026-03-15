@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$PWD"
 BIN_NAME="xfrmgen"
-BIN_DIR="${BIN_DIR:-$ROOT_DIR/bin}"
 
 OS="$(uname -s)"
 if [[ "$OS" != "Linux" ]]; then
@@ -60,11 +58,7 @@ if [[ -z "$bin_path" ]]; then
   exit 1
 fi
 
-mkdir -p "$BIN_DIR"
-cp "$bin_path" "$BIN_DIR/$BIN_NAME"
-chmod +x "$BIN_DIR/$BIN_NAME"
-
-echo "Installed: $BIN_DIR/$BIN_NAME"
+chmod +x "$bin_path"
 
 if [[ "${RUN_AFTER_DOWNLOAD:-1}" != "1" ]]; then
   exit 0
@@ -72,11 +66,11 @@ fi
 
 if [[ "$(id -u)" -ne 0 ]]; then
   if command -v sudo >/dev/null 2>&1; then
-    sudo "$BIN_DIR/$BIN_NAME" "$@"
+    sudo "$bin_path" "$@"
   else
-    echo "Run as root: $BIN_DIR/$BIN_NAME $*"
+    echo "Run as root: $bin_path $*"
     exit 1
   fi
 else
-  "$BIN_DIR/$BIN_NAME" "$@"
+  "$bin_path" "$@"
 fi
