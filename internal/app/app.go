@@ -365,19 +365,30 @@ func collectInputs(cfg *Config, uiOut *ui.UI, prompter *ui.Prompter) error {
 		}
 	}
 
-	if err := askSelect(prompter, "Inner IP version", []ui.Option{
-		{Label: "IPv4", Value: "4"},
-		{Label: "IPv6", Value: "6"},
-	}, &cfg.InnerFam, "6"); err != nil {
-		return err
-	}
+	insideEnv := strings.TrimSpace(os.Getenv("XFRM_INSIDE_ADDR"))
+	if insideEnv != "" {
+		innerCIDR, innerFam, err := parseInsideAddrEnv(insideEnv)
+		if err != nil {
+			return err
+		}
+		cfg.InnerFam = innerFam
+		cfg.InnerCIDR = innerCIDR
+		uiOut.Info("Inner address from XFRM_INSIDE_ADDR: " + cfg.InnerCIDR)
+	} else {
+		if err := askSelect(prompter, "Inner IP version", []ui.Option{
+			{Label: "IPv4", Value: "4"},
+			{Label: "IPv6", Value: "6"},
+		}, &cfg.InnerFam, "6"); err != nil {
+			return err
+		}
 
-	innerDefault := ""
-	innerCIDR := innerDefault
-	if err := askInput(prompter, "Inner local address/CIDR", &innerCIDR, validateCIDR(cfg.InnerFam)); err != nil {
-		return err
+		innerDefault := ""
+		innerCIDR := innerDefault
+		if err := askInput(prompter, "Inner local address/CIDR", &innerCIDR, validateCIDR(cfg.InnerFam)); err != nil {
+			return err
+		}
+		cfg.InnerCIDR = innerCIDR
 	}
-	cfg.InnerCIDR = innerCIDR
 
 	authChoice := "1"
 	if err := askSelectRaw(prompter, "Authentication method", []ui.Option{
@@ -552,6 +563,32 @@ func validateCIDR(fam int) func(string) error {
 		}
 		return nil
 	}
+}
+
+func parseInsideAddrEnv(value string) (string, int, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", 0, errors.New("XFRM_INSIDE_ADDR is empty")
+	}
+	if strings.Contains(value, "/") {
+		ip, ipNet, err := net.ParseCIDR(value)
+		if err != nil {
+			return "", 0, fmt.Errorf("invalid XFRM_INSIDE_ADDR CIDR: %s", value)
+		}
+		ones, _ := ipNet.Mask.Size()
+		if ip.To4() != nil {
+			return fmt.Sprintf("%s/%d", ip.To4().String(), ones), 4, nil
+		}
+		return fmt.Sprintf("%s/%d", ip.String(), ones), 6, nil
+	}
+	ip := net.ParseIP(value)
+	if ip == nil {
+		return "", 0, fmt.Errorf("invalid XFRM_INSIDE_ADDR IP: %s", value)
+	}
+	if ip.To4() != nil {
+		return ip.To4().String() + "/32", 4, nil
+	}
+	return ip.String() + "/128", 6, nil
 }
 
 func validateName(value string) error {
