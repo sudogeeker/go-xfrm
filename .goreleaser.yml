@@ -8,6 +8,7 @@ before:
 
 builds:
   - id: xfrmgen
+    main: ./cmd/xfrmgen
     env:
       - CGO_ENABLED=0
     goos:
