@@ -280,9 +280,8 @@ func collectInputs(cfg *Config, uiOut *ui.UI, prompter *ui.Prompter) error {
 	if cfg.RouteDev == "" {
 		cfg.RouteDev = cfg.Device
 	}
-
 	if cfg.RouteSrc == "" {
-		uiOut.Info("local source IP not detected; defaulting to %any")
+		cfg.RouteSrc = detectLocalFromDev(cfg.UnderlayFam, cfg.RouteDev)
 	}
 
 	local := cfg.RouteSrc
@@ -611,6 +610,36 @@ func routeSrcDev(fam int, remote string) (string, string) {
 		}
 	}
 	return dev, src
+}
+
+func detectLocalFromDev(fam int, dev string) string {
+	if strings.TrimSpace(dev) == "" {
+		return ""
+	}
+	args := []string{"-4", "-o", "addr", "show", "dev", dev, "scope", "global"}
+	needle := "inet"
+	if fam == 6 {
+		args = []string{"-6", "-o", "addr", "show", "dev", dev, "scope", "global"}
+		needle = "inet6"
+	}
+	out, err := sys.Output("ip", args...)
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		for i := 0; i < len(fields)-1; i++ {
+			if fields[i] == needle {
+				addr := fields[i+1]
+				ip := strings.SplitN(addr, "/", 2)[0]
+				if fam == 6 && strings.HasPrefix(strings.ToLower(ip), "fe80:") {
+					continue
+				}
+				return ip
+			}
+		}
+	}
+	return ""
 }
 
 func generateIfID(name string) int {
