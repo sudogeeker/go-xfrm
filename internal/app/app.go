@@ -282,7 +282,7 @@ func collectInputs(cfg *Config, uiOut *ui.UI, prompter *ui.Prompter) error {
 	}
 
 	if cfg.RouteSrc == "" {
-		uiOut.Warn("could not detect local source IP; enter it or use %any")
+		uiOut.Info("local source IP not detected; defaulting to %any")
 	}
 
 	local := cfg.RouteSrc
