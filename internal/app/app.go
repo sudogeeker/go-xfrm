@@ -357,10 +357,7 @@ func collectInputs(cfg *Config, uiOut *ui.UI, prompter *ui.Prompter) error {
 		return err
 	}
 
-	innerDefault := "fd00:cafe::0/127"
-	if cfg.InnerFam == 4 {
-		innerDefault = "10.255.255.0/31"
-	}
+	innerDefault := ""
 	innerCIDR := innerDefault
 	if err := askInput(prompter, "Inner local address/CIDR", &innerCIDR, validateCIDR(cfg.InnerFam)); err != nil {
 		return err
