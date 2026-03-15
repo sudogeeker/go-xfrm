@@ -24,8 +24,8 @@ import (
 
 	"github.com/charmbracelet/huh"
 
-	"go-xfrm/internal/sys"
-	"go-xfrm/internal/ui"
+	"github.com/sudogeeker/go-xfrm/internal/sys"
+	"github.com/sudogeeker/go-xfrm/internal/ui"
 )
 
 var ErrAborted = errors.New("aborted")

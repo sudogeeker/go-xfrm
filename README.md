@@ -1,5 +1,25 @@
 # go-xfrm
 
+## Quick Start
+
+Run from GitHub (no clone, downloads latest release and runs):
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/sudogeeker/go-xfrm/main/run.sh)
+```
+
+Run via `go run` from GitHub:
+
+```bash
+sudo go run github.com/sudogeeker/go-xfrm/cmd/xfrmgen@latest
+```
+
+Run locally after cloning:
+
+```bash
+./run.sh
+```
+
 A small interactive generator for XFRM interface + strongSwan (swanctl) configs.
 It helps you build a site-to-site IPsec/IKEv2 tunnel with modern crypto defaults,
 plus an option for PSK or RPK (raw public key) authentication.

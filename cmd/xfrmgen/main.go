@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"go-xfrm/internal/app"
+	"github.com/sudogeeker/go-xfrm/internal/app"
 )
 
 func main() {

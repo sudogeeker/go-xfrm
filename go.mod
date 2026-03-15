@@ -1,4 +1,4 @@
-module go-xfrm
+module github.com/sudogeeker/go-xfrm
 
 go 1.22
 
