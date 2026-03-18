@@ -34,11 +34,12 @@ func Run(args []string) error {
 	tunnelType := "1"
 	options := []ui.Option{
 		{Label: "1) XFRM (IPsec/IKEv2 via strongSwan)", Value: "1"},
-		{Label: "2) WireGuard", Value: "2"},
-		{Label: "3) AmneziaWG", Value: "3"},
-		{Label: "4) VXLAN", Value: "4"},
-		{Label: "5) GRE", Value: "5"},
-		{Label: "6) Manage existing tunnels", Value: "6"},
+		{Label: "2) Static XFRM (Manual Keying)", Value: "2"},
+		{Label: "3) WireGuard", Value: "3"},
+		{Label: "4) AmneziaWG", Value: "4"},
+		{Label: "5) VXLAN", Value: "5"},
+		{Label: "6) GRE", Value: "6"},
+		{Label: "7) Manage existing tunnels", Value: "7"},
 	}
 
 	uiOut.HR()
@@ -52,14 +53,16 @@ func Run(args []string) error {
 	case "1":
 		return runXFRM(uiOut, prompter, *confDir)
 	case "2":
-		return runWireguard(uiOut, prompter)
+		return runStaticXFRM(uiOut, prompter)
 	case "3":
-		return runAmneziaWG(uiOut, prompter)
+		return runWireguard(uiOut, prompter)
 	case "4":
-		return runVXLAN(uiOut, prompter)
+		return runAmneziaWG(uiOut, prompter)
 	case "5":
-		return runGRE(uiOut, prompter)
+		return runVXLAN(uiOut, prompter)
 	case "6":
+		return runGRE(uiOut, prompter)
+	case "7":
 		return runManager(uiOut, prompter, *confDir)
 	}
 

@@ -162,12 +162,20 @@ func scanTunnels(xfrmConfDir string) ([]ManagedTunnel, error) {
 		base := filepath.Base(f)
 		iface := strings.TrimSuffix(base, ".cfg")
 
-		// Skip XFRM (already scanned)
-		if strings.Contains(content, "type xfrm") {
+		// Skip standard XFRM (managed by swanctl .conf)
+		if strings.Contains(content, "type xfrm") && !strings.Contains(content, "ip xfrm state") {
 			continue
 		}
 
-		if strings.Contains(content, "type vxlan") {
+		if strings.Contains(content, "type xfrm") && strings.Contains(content, "ip xfrm state") {
+			t := ManagedTunnel{
+				Type:       "StaticXFRM",
+				Name:       iface,
+				Interface:  iface,
+				MainConfig: f,
+			}
+			tunnels = append(tunnels, t)
+		} else if strings.Contains(content, "type vxlan") {
 			t := ManagedTunnel{
 				Type:       "VXLAN",
 				Name:       iface,
@@ -208,6 +216,13 @@ func showTunnelStatus(uiOut *ui.UI, t ManagedTunnel) {
 		uiOut.Info("swanctl list-sas:")
 		out, _ = sys.Output("swanctl", "--list-sas", "--ike", t.Name)
 		fmt.Fprintln(uiOut.Out, out)
+	case "StaticXFRM":
+		uiOut.Info("ip xfrm state:")
+		out, _ = sys.Output("ip", "xfrm", "state")
+		fmt.Fprintln(uiOut.Out, out)
+		uiOut.Info("ip xfrm policy:")
+		out, _ = sys.Output("ip", "xfrm", "policy")
+		fmt.Fprintln(uiOut.Out, out)
 	case "WireGuard":
 		uiOut.Info("wg show:")
 		out, _ = sys.Output("wg", "show", t.Interface)
@@ -235,7 +250,7 @@ func bringTunnelUp(uiOut *ui.UI, t ManagedTunnel) {
 		if err := sys.Run("awg-quick", "up", t.Interface); err != nil {
 			uiOut.Warn("awg-quick up failed")
 		}
-	case "VXLAN", "GRE":
+	case "StaticXFRM", "VXLAN", "GRE":
 		if err := sys.Run("ifup", t.Interface); err != nil {
 			uiOut.Warn("ifup failed")
 		}
@@ -258,7 +273,7 @@ func bringTunnelDown(uiOut *ui.UI, t ManagedTunnel) {
 		if err := sys.Run("awg-quick", "down", t.Interface); err != nil {
 			uiOut.Warn("awg-quick down failed")
 		}
-	case "VXLAN", "GRE":
+	case "StaticXFRM", "VXLAN", "GRE":
 		if err := sys.Run("ifdown", t.Interface); err != nil {
 			uiOut.Warn("ifdown failed")
 		}
