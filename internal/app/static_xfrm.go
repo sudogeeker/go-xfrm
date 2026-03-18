@@ -332,17 +332,17 @@ func buildStaticXfrmIface(cfg *StaticXfrmConfig) string {
 	// pre-up: add XFRM states (Manual Keying with Directional Keys)
 	if cfg.Algo == "aes-gcm" {
 		// IN: remote -> local (use EncKeyIn)
-		fmt.Fprintf(&b, "    pre-up  ip xfrm state add src %s dst %s proto esp spi %s reqid %d mode tunnel aead 'rfc4106(gcm(aes))' 0x%s 128 if_id %d || true\n",
+		fmt.Fprintf(&b, "    pre-up  ip xfrm state add src %s dst %s proto esp spi %s reqid %d mode tunnel aead 'rfc4106(gcm(aes))' 0x%s 128 if_id %d flag af-unspec || true\n",
 			cfg.RemoteUnder, cfg.LocalUnder, cfg.SpiIn, cfg.IfID, cfg.EncKeyIn, cfg.IfID)
 		// OUT: local -> remote (use EncKeyOut)
-		fmt.Fprintf(&b, "    pre-up  ip xfrm state add src %s dst %s proto esp spi %s reqid %d mode tunnel aead 'rfc4106(gcm(aes))' 0x%s 128 if_id %d || true\n",
+		fmt.Fprintf(&b, "    pre-up  ip xfrm state add src %s dst %s proto esp spi %s reqid %d mode tunnel aead 'rfc4106(gcm(aes))' 0x%s 128 if_id %d flag af-unspec || true\n",
 			cfg.LocalUnder, cfg.RemoteUnder, cfg.SpiOut, cfg.IfID, cfg.EncKeyOut, cfg.IfID)
 	} else {
 		// IN
-		fmt.Fprintf(&b, "    pre-up  ip xfrm state add src %s dst %s proto esp spi %s reqid %d mode tunnel enc 'cbc(aes)' 0x%s auth 'hmac(sha256)' 0x%s if_id %d || true\n",
+		fmt.Fprintf(&b, "    pre-up  ip xfrm state add src %s dst %s proto esp spi %s reqid %d mode tunnel enc 'cbc(aes)' 0x%s auth 'hmac(sha256)' 0x%s if_id %d flag af-unspec || true\n",
 			cfg.RemoteUnder, cfg.LocalUnder, cfg.SpiIn, cfg.IfID, cfg.EncKeyIn, cfg.AuthKeyIn, cfg.IfID)
 		// OUT
-		fmt.Fprintf(&b, "    pre-up  ip xfrm state add src %s dst %s proto esp spi %s reqid %d mode tunnel enc 'cbc(aes)' 0x%s auth 'hmac(sha256)' 0x%s if_id %d || true\n",
+		fmt.Fprintf(&b, "    pre-up  ip xfrm state add src %s dst %s proto esp spi %s reqid %d mode tunnel enc 'cbc(aes)' 0x%s auth 'hmac(sha256)' 0x%s if_id %d flag af-unspec || true\n",
 			cfg.LocalUnder, cfg.RemoteUnder, cfg.SpiOut, cfg.IfID, cfg.EncKeyOut, cfg.AuthKeyOut, cfg.IfID)
 	}
 
