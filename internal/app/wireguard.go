@@ -217,6 +217,13 @@ func runWireguard(uiOut *ui.UI, prompter *ui.Prompter) error {
 	}
 	uiOut.Ok("Wrote: " + cfg.ConfFile)
 
+	uiOut.Info("Enabling and starting interface via systemd...")
+	if err := sys.Run("systemctl", "enable", "--now", "wg-quick@"+cfg.Interface); err != nil {
+		uiOut.Warn("Failed to enable/start wg-quick@" + cfg.Interface)
+	} else {
+		uiOut.Ok("Interface started")
+	}
+
 	printWgNextSteps(cfg, uiOut)
 	return nil
 }

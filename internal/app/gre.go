@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/sudogeeker/tunnel-helper/internal/sys"
 	"github.com/sudogeeker/tunnel-helper/internal/ui"
 )
 
@@ -99,9 +100,15 @@ func runGRE(uiOut *ui.UI, prompter *ui.Prompter) error {
 		return err
 	}
 
+	uiOut.Info("Bringing up interface " + cfg.Name + "...")
+	if err := sys.Run("ifup", cfg.Name); err != nil {
+		uiOut.Warn("Failed to bring up interface. Is it already up?")
+	} else {
+		uiOut.Ok("Interface is up")
+	}
+
 	uiOut.HR()
 	uiOut.Title("Next steps")
-	fmt.Fprintf(uiOut.Out, "  ifup %s\n", cfg.Name)
 	fmt.Fprintf(uiOut.Out, "  ip -d link show %s\n", cfg.Name)
 	fmt.Fprintf(uiOut.Out, "  ping <remote-inner-ip> -I %s\n", cfg.Name)
 	uiOut.HR()

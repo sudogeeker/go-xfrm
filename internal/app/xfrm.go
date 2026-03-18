@@ -111,6 +111,18 @@ func runXFRM(uiOut *ui.UI, prompter *ui.Prompter, confDir string) error {
 	if err := wrapAbort(ensureInterfacesSource(uiOut, prompter)); err != nil {
 		return err
 	}
+
+	uiOut.Info("Starting strongSwan and bringing up interface...")
+	if err := sys.Run("systemctl", "enable", "--now", "strongswan"); err != nil {
+		uiOut.Warn("Failed to enable/start strongSwan service")
+	}
+	sys.Run("swanctl", "--load-all")
+	if err := sys.Run("ifup", cfg.XfrmIf); err != nil {
+		uiOut.Warn("Failed to bring up interface. Is it already up?")
+	} else {
+		uiOut.Ok("Interface is up")
+	}
+
 	printXfrmNextSteps(cfg, uiOut)
 	return nil
 }

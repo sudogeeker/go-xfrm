@@ -233,6 +233,13 @@ func runAmneziaWG(uiOut *ui.UI, prompter *ui.Prompter) error {
 	}
 	uiOut.Ok("Wrote: " + cfg.ConfFile)
 
+	uiOut.Info("Enabling and starting interface via systemd...")
+	if err := sys.Run("systemctl", "enable", "--now", "awg-quick@"+cfg.Interface); err != nil {
+		uiOut.Warn("Failed to enable/start awg-quick@" + cfg.Interface)
+	} else {
+		uiOut.Ok("Interface started")
+	}
+
 	printAwgNextSteps(cfg, uiOut)
 	return nil
 }
