@@ -309,6 +309,14 @@ func editTunnelConfig(uiOut *ui.UI, prompter *ui.Prompter, t ManagedTunnel) erro
 func deleteTunnel(uiOut *ui.UI, t ManagedTunnel) {
 	uiOut.Info("Deleting " + t.Interface + "...")
 
+	// Disable systemd service if applicable
+	switch t.Type {
+	case "WireGuard":
+		sys.Run("systemctl", "disable", "--now", "wg-quick@"+t.Interface)
+	case "AmneziaWG":
+		sys.Run("systemctl", "disable", "--now", "awg-quick@"+t.Interface)
+	}
+
 	// Bring down first to be safe
 	bringTunnelDown(uiOut, t)
 
