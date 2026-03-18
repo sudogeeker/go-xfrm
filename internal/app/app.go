@@ -38,6 +38,7 @@ func Run(args []string) error {
 		{Label: "3) AmneziaWG", Value: "3"},
 		{Label: "4) VXLAN", Value: "4"},
 		{Label: "5) GRE", Value: "5"},
+		{Label: "6) Manage existing tunnels", Value: "6"},
 	}
 
 	uiOut.HR()
@@ -58,6 +59,8 @@ func Run(args []string) error {
 		return runVXLAN(uiOut, prompter)
 	case "5":
 		return runGRE(uiOut, prompter)
+	case "6":
+		return runManager(uiOut, prompter, *confDir)
 	}
 
 	return nil
