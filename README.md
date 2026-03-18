@@ -1,8 +1,7 @@
 # tunnel-helper
 
-A small interactive generator for XFRM interface + strongSwan (swanctl) configs.
-It helps you build a site-to-site IPsec/IKEv2 tunnel with modern crypto defaults,
-plus an option for PSK or RPK (raw public key) authentication.
+A small interactive generator for multiple types of VPNs and tunnels. 
+It supports creating configurations for **IPsec/IKEv2 (XFRM via strongSwan)**, **WireGuard**, **AmneziaWG**, **VXLAN**, and **GRE**.
 
 ## Table of Contents
 
@@ -10,11 +9,9 @@ plus an option for PSK or RPK (raw public key) authentication.
 - [Requirements](#requirements)
 - [Build and Run](#build-and-run)
 - [Configuration Details](#configuration-details)
-  - [What It Generates](#what-it-generates)
-  - [Authentication Options](#authentication-options)
-  - [Key Exchange & Algorithms](#key-exchange--algorithms)
-- [Apply and Connect](#apply-and-connect)
-- [Security Notes](#security-notes)
+  - [IPsec/IKEv2 (XFRM)](#ipsecikev2-xfrm)
+  - [WireGuard & AmneziaWG](#wireguard--amneziawg)
+  - [VXLAN & GRE](#vxlan--gre)
 - [License](#license)
 
 ---
@@ -45,21 +42,12 @@ Run locally after cloning:
 
 ## Requirements
 
-- Linux with XFRM support
-- root access
-- strongSwan + swanctl installed
+- Linux with root access
 - `ip` command available
-- ifupdown networking (`/etc/network/interfaces`) is required
-  *(netplan or systemd-networkd are not supported by this tool)*
-
-Recommended packages on Debian/Ubuntu:
-
-- `charon-systemd`
-- `strongswan-swanctl`
-- `strongswan-libcharon`
-- `libstrongswan-standard-plugins`
-- `libstrongswan-extra-plugins`
-- `libcharon-extra-plugins`
+- **For XFRM, VXLAN, and GRE:** ifupdown networking (`/etc/network/interfaces`) is required. *(netplan or systemd-networkd are not supported by this tool)*
+- **For XFRM:** strongSwan + swanctl installed. Recommended: `charon-systemd`, `strongswan-swanctl`, `libstrongswan-extra-plugins`.
+- **For WireGuard:** `wireguard-tools` (the script can auto-install this via `apt` if missing).
+- **For AmneziaWG:** The script can automatically download, compile, and install the kernel module and tools from source if they are missing.
 
 ---
 
@@ -79,114 +67,44 @@ Binary is written to `./bin/tunnel-helper`.
 sudo ./bin/tunnel-helper
 ```
 
-The wizard will prompt you for:
+The wizard will first prompt you to select the tunnel type:
 
-1. Underlay IP version (v4/v6)
-2. Primary device (e.g. `eth0`)
-3. Remote underlay IP
-4. Local underlay IP
-5. Local ID / Remote ID
-6. Tunnel name (`ipsec-<name>` interface will be created)
-7. Inner IP version
-8. Inner CIDR
-9. Authentication method (PSK or RPK)
-10. Crypto profile (AES-GCM + PRF)
-11. Key exchange (IKE DH group) from detected safe options
-12. NAT encapsulation option
+1. XFRM (IPsec/IKEv2 via strongSwan)
+2. WireGuard
+3. AmneziaWG
+4. VXLAN
+5. GRE
 
-After collection, the tool prints a full configuration summary.
+It will then guide you through an interactive process to collect IP addresses, keys, and other parameters, and generate the necessary configuration files.
 
 ---
 
 ## Configuration Details
 
-### What It Generates
+### IPsec/IKEv2 (XFRM)
 
-The tool writes three files:
-
+Generates three files:
 - `swanctl` connection config: `/etc/swanctl/conf.d/<ifname>.conf`
 - `swanctl` secrets config: `/etc/swanctl/conf.d/<ifname>.secrets` (PSK only)
 - XFRM interface config: `/etc/network/interfaces.d/<ifname>.cfg`
 
-It also ensures:
+Supports both **PSK (Pre-Shared Key)** and **RPK (Raw Public Key)** authentication. It automatically detects and offers strong DH groups for PFS.
 
-- `/etc/swanctl/swanctl.conf` includes `conf.d/*.conf` and `conf.d/*.secrets`
-- `/etc/network/interfaces` sources `/etc/network/interfaces.d/*`
+### WireGuard & AmneziaWG
 
-### Authentication Options
+Generates a standard WireGuard config in `/etc/wireguard/wg-<name>.conf` or AmneziaWG config in `/etc/amnezia/amneziawg/awg-<name>.conf`. 
+- Can automatically generate key pairs.
+- Supports specifying listening ports, MTU, PersistentKeepalive, and routing table.
+- **AmneziaWG** adds obfuscation parameters (Jc, Jmin, Jmax, S1, S2, H1, H2, H3, H4) and compiles kernel module/tools from source automatically if they're not installed.
+- Use `wg-quick up wg-<name>` or `awg-quick up awg-<name>` to bring the interface up.
 
-#### 1) PSK (Pre-Shared Key)
+### VXLAN & GRE
 
-- Simple and quick.
-- Best for small, fixed pairs.
-- The tool can auto-generate a high-entropy PSK.
-
-#### 2) RPK (Raw Public Key)
-
-- Similar to WireGuard-style static public keys.
-- No certificates or expiry.
-- You must exchange public keys between peers.
-
-**RPK: Copy/Paste Workflow (Two Sides)**
-On **both** sides, run the tool and select `RPK`.
-
-1. Each side prints a `Local RPK public key (base64 DER)`.
-2. Copy that string and paste into the other side when prompted.
-3. Complete the remaining prompts.
-4. The tool will write the peer pubkey into `/etc/swanctl/pubkey`.
-
-Result: each side has its own private key and the peer's public key.
-
-### Key Exchange & Algorithms
-
-**Key Exchange (IKE DH Group)**
-The tool runs `swanctl --list-algs` and parses the **key exchange** section. It then offers only **strong** groups if available:
-`CURVE_25519`, `CURVE_448`, `ECP_384`, `ECP_521`, `MODP_4096`, `MODP_3072`.
-If detection fails, it falls back to a safe default list.
-
-**RPK Key Algorithm Selection**
-When using RPK, you can choose:
-- ECDSA P-384 (recommended)
-- ECDSA P-256
-- ECDSA P-521
-- Ed25519 (only shown if supported by your local `pki` backend)
-
-Ed25519 availability is checked by running `pki --gen --type ed25519 --outform der`. If that command fails, Ed25519 is hidden from the menu.
-
----
-
-## Apply and Connect
-
-Load configs, then bring up the interface and tunnel:
-
-```bash
-systemctl enable --now strongswan
-swanctl --load-all
-ifup ipsec-<name>
-```
-
-Verify:
-
-```bash
-swanctl --list-conns
-swanctl --list-sas
-ip link show ipsec-<name>
-ip addr show ipsec-<name>
-```
-
-If you want to manually initiate:
-
-```bash
-swanctl --initiate --child <name>-child
-```
-
----
-
-## Security Notes
-
-- PSK is fine for a single pair if the key is random and well protected.
-- RPK avoids shared secrets and scales better for multi-peer setups.
-- Always protect private keys and restrict file permissions.
+Generates an ifupdown config in `/etc/network/interfaces.d/<name>.cfg`.
+- For VXLAN: Uses `ip link add type vxlan` natively.
+- For GRE: Uses `ip tunnel add mode gre/ip6gre`.
+- Handles both IPv4 and IPv6 underlay/inner networks.
+- Supports automatic replacement of inner IP addresses upon interface creation.
 
 ---
 
