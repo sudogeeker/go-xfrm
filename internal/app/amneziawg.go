@@ -306,19 +306,19 @@ func installAmneziaWG(uiOut *ui.UI, prompter *ui.Prompter) error {
 	}
 
 	// Install Kernel Module
-	uiOut.Info("Cloning amneziawg-linux-kernel...")
-	os.RemoveAll("/tmp/amneziawg-linux-kernel")
-	if err := sys.Run("git", "clone", "https://github.com/amnezia-vpn/amneziawg-linux-kernel.git", "/tmp/amneziawg-linux-kernel"); err != nil {
+	uiOut.Info("Cloning amneziawg-linux-kernel-module...")
+	os.RemoveAll("/tmp/amneziawg-linux-kernel-module")
+	if err := sys.Run("git", "clone", "https://github.com/amnezia-vpn/amneziawg-linux-kernel-module.git", "/tmp/amneziawg-linux-kernel-module"); err != nil {
 		return fmt.Errorf("failed to clone kernel module: %w", err)
 	}
 
 	uiOut.Info("Building kernel module...")
-	if err := sys.Run("make", "-C", "/tmp/amneziawg-linux-kernel/src", "module"); err != nil {
+	if err := sys.Run("make", "-C", "/tmp/amneziawg-linux-kernel-module/src", "module"); err != nil {
 		return fmt.Errorf("failed to make kernel module: %w", err)
 	}
 
 	uiOut.Info("Installing kernel module...")
-	if err := sys.Run("make", "-C", "/tmp/amneziawg-linux-kernel/src", "module-install"); err != nil {
+	if err := sys.Run("make", "-C", "/tmp/amneziawg-linux-kernel-module/src", "module-install"); err != nil {
 		return fmt.Errorf("failed to install kernel module: %w", err)
 	}
 
