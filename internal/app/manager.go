@@ -21,10 +21,6 @@ type ManagedTunnel struct {
 }
 
 func runManager(uiOut *ui.UI, prompter *ui.Prompter, xfrmConfDir string) error {
-	uiOut.HR()
-	uiOut.Title("Tunnel Manager")
-	uiOut.HR()
-
 	tunnels, err := scanTunnels(xfrmConfDir)
 	if err != nil {
 		return err
@@ -59,10 +55,6 @@ func runManager(uiOut *ui.UI, prompter *ui.Prompter, xfrmConfDir string) error {
 
 func manageTunnel(uiOut *ui.UI, prompter *ui.Prompter, t ManagedTunnel) error {
 	for {
-		uiOut.HR()
-		uiOut.Title(fmt.Sprintf("Managing: %s (%s)", t.Interface, t.Type))
-		uiOut.HR()
-
 		action := "status"
 		options := []ui.Option{
 			{Label: "1) View Status", Value: "status"},

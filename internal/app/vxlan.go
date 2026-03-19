@@ -29,9 +29,7 @@ func runVXLAN(uiOut *ui.UI, prompter *ui.Prompter) error {
 		IfaceDir: "/etc/network/interfaces.d",
 	}
 
-	uiOut.HR()
 	uiOut.Title("VXLAN Tunnel Generator")
-	uiOut.HR()
 
 	name := "prod1"
 	if err := askInput(prompter, "Tunnel name (interface: vxlan-<name>)", &name, validateName); err != nil {

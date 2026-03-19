@@ -56,10 +56,8 @@ func runWireguard(uiOut *ui.UI, prompter *ui.Prompter) error {
 		}
 	}
 
-	uiOut.HR()
 	uiOut.Title("WireGuard (wg-quick) Tunnel Generator")
 	uiOut.Dim("Simple, fast, modern VPN protocol")
-	uiOut.HR()
 
 	name := "prod1"
 	if err := askInput(prompter, "Tunnel name (interface: wg-<name>)", &name, validateName); err != nil {

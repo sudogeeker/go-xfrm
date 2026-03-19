@@ -64,10 +64,8 @@ func runAmneziaWG(uiOut *ui.UI, prompter *ui.Prompter) error {
 		AwgDir: "/etc/amnezia/amneziawg",
 	}
 
-	uiOut.HR()
 	uiOut.Title("AmneziaWG (awg-quick) Tunnel Generator")
 	uiOut.Dim("WireGuard fork with obfuscation to bypass DPI")
-	uiOut.HR()
 
 	// 1. 独立检测模块和工具
 	hasModule := sys.Run("modprobe", "-n", "amneziawg") == nil

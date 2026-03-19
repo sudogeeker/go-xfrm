@@ -42,10 +42,8 @@ func runStaticXFRM(uiOut *ui.UI, prompter *ui.Prompter) error {
 		IfaceDir: "/etc/network/interfaces.d",
 	}
 
-	uiOut.HR()
-	uiOut.Title("Static XFRM (Manual Keying) Generator")
+	uiOut.Title("XFRM with Static Keys")
 	uiOut.Dim("No IKE negotiation, no 500/4500 UDP needed")
-	uiOut.HR()
 
 	if err := collectStaticXfrmInputs(cfg, uiOut, prompter); err != nil {
 		return err

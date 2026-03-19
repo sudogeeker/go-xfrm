@@ -90,10 +90,8 @@ func runXFRM(uiOut *ui.UI, prompter *ui.Prompter, confDir string) error {
 		IfaceDir:   "/etc/network/interfaces.d",
 	}
 
-	uiOut.HR()
-	uiOut.Title("XFRM Interface + strongSwan (swanctl) Generator")
-	uiOut.Dim("XFRM interface + PFS rotation")
-	uiOut.HR()
+	uiOut.Title("XFRM with IKEv2")
+	uiOut.Dim("XFRM interface + strongSwan (swanctl)")
 
 	if err := wrapAbort(collectXfrmInputs(cfg, uiOut, prompter)); err != nil {
 		return err

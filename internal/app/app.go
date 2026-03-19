@@ -34,20 +34,18 @@ func Run(args []string) error {
 	for {
 		tunnelType := "manager"
 		options := []ui.Option{
-			{Label: "1) Manage existing tunnels (Status/Up/Down/Edit)", Value: "manager"},
-			{Label: "2) XFRM (IPsec/IKEv2 via strongSwan)", Value: "1"},
-			{Label: "3) Static XFRM (Manual Keying)", Value: "2"},
-			{Label: "4) WireGuard", Value: "3"},
-			{Label: "5) AmneziaWG", Value: "4"},
-			{Label: "6) VXLAN", Value: "5"},
-			{Label: "7) GRE", Value: "6"},
-			{Label: "8) OpenVPN (DCO)", Value: "7"},
+			{Label: "1) Manage existing tunnels", Value: "manager"},
+			{Label: "2) WireGuard", Value: "3"},
+			{Label: "3) AmneziaWG", Value: "4"},
+			{Label: "4) OpenVPN", Value: "7"},
+			{Label: "5) VXLAN", Value: "5"},
+			{Label: "6) GRE", Value: "6"},
+			{Label: "7) XFRM with IKEv2", Value: "1"},
+			{Label: "8) XFRM with Static Keys", Value: "2"},
 			{Label: "0) Exit", Value: "exit"},
 		}
 
-		uiOut.HR()
 		uiOut.Title("tunnel-helper - VPN / Tunnel Generator")
-		uiOut.HR()
 		if err := askSelectRaw(prompter, "Main Menu (Select an action)", options, &tunnelType); err != nil {
 			// 如果在主菜单直接取消，则退出
 			if isAbortErr(err) {

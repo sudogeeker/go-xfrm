@@ -27,9 +27,7 @@ func runGRE(uiOut *ui.UI, prompter *ui.Prompter) error {
 		IfaceDir: "/etc/network/interfaces.d",
 	}
 
-	uiOut.HR()
 	uiOut.Title("GRE Tunnel Generator")
-	uiOut.HR()
 
 	name := "prod1"
 	if err := askInput(prompter, "Tunnel name (interface: gre-<name>)", &name, validateName); err != nil {
