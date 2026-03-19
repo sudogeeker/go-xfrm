@@ -33,11 +33,11 @@ func runVXLAN(uiOut *ui.UI, prompter *ui.Prompter) error {
 	uiOut.Title("VXLAN Tunnel Generator")
 	uiOut.HR()
 
-	name := "vxlan100"
-	if err := askInput(prompter, "Tunnel name (e.g. vxlan100)", &name, validateName); err != nil {
+	name := "prod1"
+	if err := askInput(prompter, "Tunnel name (interface: vxlan-<name>)", &name, validateName); err != nil {
 		return err
 	}
-	cfg.Name = name
+	cfg.Name = "vxlan-" + name
 
 	vni := "100"
 	if err := askInput(prompter, "VXLAN ID (VNI)", &vni, func(v string) error {

@@ -31,11 +31,11 @@ func runGRE(uiOut *ui.UI, prompter *ui.Prompter) error {
 	uiOut.Title("GRE Tunnel Generator")
 	uiOut.HR()
 
-	name := "gre1"
-	if err := askInput(prompter, "Tunnel name (e.g. gre1)", &name, validateName); err != nil {
+	name := "prod1"
+	if err := askInput(prompter, "Tunnel name (interface: gre-<name>)", &name, validateName); err != nil {
 		return err
 	}
-	cfg.Name = name
+	cfg.Name = "gre-" + name
 
 	if err := askSelect(prompter, "Underlay IP version", []ui.Option{
 		{Label: "IPv4", Value: "4"},

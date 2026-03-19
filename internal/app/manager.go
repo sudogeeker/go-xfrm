@@ -504,22 +504,23 @@ func editIfupdownTunnel(uiOut *ui.UI, prompter *ui.Prompter, t ManagedTunnel) er
 		Label string
 		Regex *regexp.Regexp
 		Value string
-		Key   string // 用于在命令行中定位
+		Key   string // 严格锁定的关键字前缀
 	}
 
+	// 锁定前缀，防止误匹配（例如防止 id 匹配到 if_id）
 	fields := []field{
-		{"Local Underlay", regexp.MustCompile(`local\s+([^\s]+)`), "", "local"},
-		{"Remote Underlay", regexp.MustCompile(`remote\s+([^\s]+)`), "", "remote"},
+		{"Local Underlay", regexp.MustCompile(`\s+local\s+([^\s]+)`), "", "local"},
+		{"Remote Underlay", regexp.MustCompile(`\s+remote\s+([^\s]+)`), "", "remote"},
 		{"Inner CIDR", regexp.MustCompile(`replace\s+([^\s/]+/[0-9]+)`), "", "replace"},
-		{"MTU", regexp.MustCompile(`mtu\s+([0-9]+)`), "", "mtu"},
+		{"MTU", regexp.MustCompile(`\s+mtu\s+([0-9]+)`), "", "mtu"},
 	}
 
 	if t.Type == "VXLAN" {
-		fields = append(fields, field{"VNI", regexp.MustCompile(`id\s+([0-9]+)`), "", "id"})
+		// 使用 \s+id\s+ 确保精准锁定 VXLAN ID，不被 if_id 干扰
+		fields = append(fields, field{"VNI", regexp.MustCompile(`\s+id\s+([0-9]+)`), "", "id"})
 	}
 
 	if t.Type == "StaticXFRM" {
-		// 对于 StaticXFRM，提取第一个遇到的 SPI 和 Key 作为示例（通常是成对出现的）
 		fields = append(fields,
 			field{"SPI In", regexp.MustCompile(`spi\s+(0x[0-9a-fA-F]+)`), "", "spi"},
 			field{"SPI Out", regexp.MustCompile(`spi\s+(0x[0-9a-fA-F]+)`), "", "spi"},
@@ -528,16 +529,31 @@ func editIfupdownTunnel(uiOut *ui.UI, prompter *ui.Prompter, t ManagedTunnel) er
 		)
 	}
 
-	// 初始提取
+	// 提取逻辑：按行处理，跳过注释
+	lines := strings.Split(text, "\n")
 	for i, f := range fields {
-		all := f.Regex.FindAllStringSubmatch(text, -1)
-		matchIdx := 0
-		// 对于 In/Out 方向的字段，尝试取不同的索引
-		if strings.Contains(f.Label, "Out") && len(all) > 1 {
-			matchIdx = 1
-		}
-		if len(all) > matchIdx && len(all[matchIdx]) > 1 {
-			fields[i].Value = all[matchIdx][1]
+		matchCount := 0
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+				continue
+			}
+			m := f.Regex.FindStringSubmatch(line)
+			if len(m) > 1 {
+				matchCount++
+				// 对于 In/Out 方向，根据出现顺序锁定
+				if strings.Contains(f.Label, "Out") {
+					if matchCount == 2 {
+						fields[i].Value = m[1]
+						break
+					}
+				} else {
+					fields[i].Value = m[1]
+					if !strings.Contains(f.Label, "In") {
+						break
+					}
+				}
+			}
 		}
 	}
 
