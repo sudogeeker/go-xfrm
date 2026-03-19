@@ -38,7 +38,6 @@ type StaticXfrmConfig struct {
 }
 
 func runStaticXFRM(uiOut *ui.UI, prompter *ui.Prompter) error {
-	uiOut.Clear()
 	cfg := &StaticXfrmConfig{
 		IfaceDir: "/etc/network/interfaces.d",
 	}

@@ -59,7 +59,8 @@ func (u *UI) Title(s string) {
 
 func (u *UI) Clear() {
 	if u.TTY {
-		fmt.Fprint(u.Out, "\033[H\033[2J\033[3J")
+		// 向上移动一行，清除该行，并将光标移至行首
+		fmt.Fprint(u.Out, "\033[A\033[2K\r")
 	}
 }
 

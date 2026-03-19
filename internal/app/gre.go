@@ -23,7 +23,6 @@ type GreConfig struct {
 }
 
 func runGRE(uiOut *ui.UI, prompter *ui.Prompter) error {
-	uiOut.Clear()
 	cfg := &GreConfig{
 		IfaceDir: "/etc/network/interfaces.d",
 	}

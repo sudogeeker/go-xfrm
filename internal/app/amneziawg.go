@@ -60,7 +60,6 @@ type AmneziaWGConfig struct {
 }
 
 func runAmneziaWG(uiOut *ui.UI, prompter *ui.Prompter) error {
-	uiOut.Clear()
 	cfg := &AmneziaWGConfig{
 		AwgDir: "/etc/amnezia/amneziawg",
 	}

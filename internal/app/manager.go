@@ -28,6 +28,8 @@ func runManager(uiOut *ui.UI, prompter *ui.Prompter, xfrmConfDir string) error {
 
 	if len(tunnels) == 0 {
 		uiOut.Warn("No tunnels found.")
+		uiOut.Dim("\nPress Enter to return to main menu...")
+		_, _ = uiOut.ReadLine()
 		return nil
 	}
 

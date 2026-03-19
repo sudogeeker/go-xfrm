@@ -30,7 +30,6 @@ type WireGuardConfig struct {
 }
 
 func runWireguard(uiOut *ui.UI, prompter *ui.Prompter) error {
-	uiOut.Clear()
 	cfg := &WireGuardConfig{
 		WgDir: "/etc/wireguard",
 	}
