@@ -31,11 +31,7 @@ func Run(args []string) error {
 		return err
 	}
 
-	first := true
 	for {
-		if !first {
-			uiOut.Clear()
-		}
 		tunnelType := "manager"
 		options := []ui.Option{
 			{Label: "1) Manage existing tunnels", Value: "manager"},
@@ -57,7 +53,16 @@ func Run(args []string) error {
 			}
 			return wrapAbort(err)
 		}
-		first = false
+
+		// 精确擦除主菜单留下的痕迹：
+		// 1. Title("tunnel-helper...")
+		// 2. askSelectRaw 的标题 "Main Menu..."
+		// 3. askSelectRaw 完成后的选择结果 "> manager"
+		uiOut.ClearLines(3)
+
+		if tunnelType == "exit" {
+			return nil
+		}
 
 		if tunnelType == "exit" {
 			return nil

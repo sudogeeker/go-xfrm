@@ -45,7 +45,6 @@ func isOpenVPNMLKEMSupported() bool {
 }
 
 func runOpenVPN(uiOut *ui.UI, prompter *ui.Prompter) error {
-	uiOut.Clear()
 	uiOut.Title("OpenVPN")
 
 	if err := checkOpenVPNPackages(uiOut, prompter); err != nil {

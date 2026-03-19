@@ -58,9 +58,15 @@ func (u *UI) Title(s string) {
 }
 
 func (u *UI) Clear() {
+	u.ClearLines(1)
+}
+
+func (u *UI) ClearLines(n int) {
 	if u.TTY {
-		// 向上移动一行，清除该行，并将光标移至行首
-		fmt.Fprint(u.Out, "\033[A\033[2K\r")
+		for i := 0; i < n; i++ {
+			// \033[F 移至上一行行首, \033[2K 清除全行
+			fmt.Fprint(u.Out, "\033[F\033[2K")
+		}
 	}
 }
 
