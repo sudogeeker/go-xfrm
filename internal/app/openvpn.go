@@ -22,6 +22,8 @@ type OpenVPNConfig struct {
 	MTU                  string
 	DCO                  bool
 	AuthMethod           string // "rpk"
+	Cipher               string // "AES-256-GCM" or "AES-128-GCM"
+	EnableMLKEM          bool
 	RPKLocalCertPath     string
 	RPKLocalKeyPath      string
 	RPKLocalFingerprint  string
@@ -33,6 +35,15 @@ const (
 	OVPNAuthRPK = "rpk"
 )
 
+func isOpenVPNMLKEMSupported() bool {
+	out, err := sys.Output("openvpn", "--show-tls")
+	if err != nil {
+		return false
+	}
+	// Check for MLKEM768 or similar in the output
+	return strings.Contains(out, "MLKEM768")
+}
+
 func runOpenVPN(uiOut *ui.UI, prompter *ui.Prompter) error {
 	uiOut.HR()
 	uiOut.Title("OpenVPN (DCO)")
@@ -42,7 +53,7 @@ func runOpenVPN(uiOut *ui.UI, prompter *ui.Prompter) error {
 		return err
 	}
 
-	cfg := &OpenVPNConfig{DCO: true}
+	cfg := &OpenVPNConfig{DCO: true, Cipher: "AES-256-GCM"}
 
 	if err := collectOpenVPNInputs(cfg, uiOut, prompter); err != nil {
 		return wrapAbort(err)
@@ -199,6 +210,29 @@ func collectOpenVPNInputs(cfg *OpenVPNConfig, uiOut *ui.UI, prompter *ui.Prompte
 	}
 	cfg.DCO = dco
 
+	// Cipher
+	cipherChoice := "1"
+	if err := askSelectRaw(prompter, "Cipher Priority", []ui.Option{
+		{Label: "1) AES-256-GCM (More secure, default)", Value: "1"},
+		{Label: "2) AES-128-GCM (Faster on older hardware)", Value: "2"},
+	}, &cipherChoice); err != nil {
+		return err
+	}
+	if cipherChoice == "1" {
+		cfg.Cipher = "AES-256-GCM"
+	} else {
+		cfg.Cipher = "AES-128-GCM"
+	}
+
+	// MLKEM
+	if isOpenVPNMLKEMSupported() {
+		enableMLKEM, err := askConfirm(prompter, "Enable MLKEM (Module-Lattice-Based Key-Encapsulation Mechanism) for post-quantum resistance?", true)
+		if err != nil {
+			return err
+		}
+		cfg.EnableMLKEM = enableMLKEM
+	}
+
 	cfg.AuthMethod = OVPNAuthRPK
 
 	return nil
@@ -305,8 +339,18 @@ func writeOpenVPNConfig(cfg *OpenVPNConfig, uiOut *ui.UI) error {
 	b.WriteString("float\n")
 
 	// Modern Ciphers
-	b.WriteString("cipher AES-256-GCM\n")
-	b.WriteString("data-ciphers AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305\n")
+	b.WriteString(fmt.Sprintf("cipher %s\n", cfg.Cipher))
+	if cfg.Cipher == "AES-256-GCM" {
+		b.WriteString("data-ciphers AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305\n")
+	} else {
+		b.WriteString("data-ciphers AES-128-GCM:AES-256-GCM:CHACHA20-POLY1305\n")
+	}
+
+	if cfg.EnableMLKEM {
+		b.WriteString("tls-groups P-256:P-384:X25519:MLKEM768\n")
+	} else {
+		b.WriteString("tls-groups P-256:P-384:X25519\n")
+	}
 
 	if !cfg.DCO {
 		b.WriteString("disable-dco\n")
