@@ -1,7 +1,7 @@
 # tunnel-helper
 
 A small interactive generator for multiple types of VPNs and tunnels. 
-It supports creating configurations for **IPsec/IKEv2 (XFRM via strongSwan)**, **WireGuard**, **AmneziaWG**, **VXLAN**, and **GRE**.
+It supports creating configurations for **IPsec/IKEv2 (XFRM via strongSwan)**, **WireGuard**, **AmneziaWG**, **VXLAN**, **GRE**, and **OpenVPN (DCO)**.
 
 ## Table of Contents
 
@@ -12,6 +12,7 @@ It supports creating configurations for **IPsec/IKEv2 (XFRM via strongSwan)**, *
   - [IPsec/IKEv2 (XFRM) & Static XFRM](#ipsecikev2-xfrm--static-xfrm)
   - [WireGuard & AmneziaWG](#wireguard--amneziawg)
   - [VXLAN & GRE](#vxlan--gre)
+  - [OpenVPN (DCO)](#openvpn-dco)
 - [License](#license)
 
 ---
@@ -52,6 +53,7 @@ Run locally after cloning:
 - **For XFRM:** strongSwan + swanctl installed. Recommended: `charon-systemd`, `strongswan-swanctl`, `libstrongswan-extra-plugins`.
 - **For WireGuard:** `wireguard-tools` (the script can auto-install this via `apt` if missing).
 - **For AmneziaWG:** The script can automatically download, compile, and install the kernel module and tools from source if they are missing.
+- **For OpenVPN:** `openvpn`, `dkms`, and `openvpn-dco-dkms` (the script can auto-install these via `apt` if missing).
 
 ---
 
@@ -74,10 +76,12 @@ sudo ./bin/tunnel-helper
 The wizard will first prompt you to select the tunnel type:
 
 1. XFRM (IPsec/IKEv2 via strongSwan)
-2. WireGuard
-3. AmneziaWG
-4. VXLAN
-5. GRE
+2. Static XFRM (Manual Keying)
+3. WireGuard
+4. AmneziaWG
+5. VXLAN
+6. GRE
+7. OpenVPN (DCO)
 
 It will then guide you through an interactive process to collect IP addresses, keys, and other parameters, and generate the necessary configuration files.
 
@@ -118,6 +122,15 @@ Generates an ifupdown config in `/etc/network/interfaces.d/<name>.cfg`.
 - For GRE: Uses `ip tunnel add mode gre/ip6gre`.
 - Handles both IPv4 and IPv6 underlay/inner networks.
 - Supports automatic replacement of inner IP addresses upon interface creation.
+
+### OpenVPN (DCO)
+
+Generates configuration files in `/etc/openvpn/server/` or `/etc/openvpn/client/`.
+- Uses the `Listener (Server)` / `Initiator (Client)` model to define connections for P2P tunnels.
+- Supports both **UDP** and **TCP**.
+- Strongly encourages and enables **DCO (Data Channel Offload)** by default for maximum performance.
+- Supports **Static Key (PSK)** for straightforward symmetric setup.
+- Supports OpenVPN 2.6+ **Peer Fingerprint (RPK/TLS)**, auto-generating self-signed certificates and handling SHA256 fingerprints natively, removing the need for a complex CA infrastructure.
 
 ---
 
