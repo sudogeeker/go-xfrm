@@ -360,42 +360,122 @@ func askDefault(prompter *ui.Prompter, title, def string, validate func(string) 
 	return val
 }
 
-func installAwgModule(uiOut *ui.UI, prompter *ui.Prompter) error {
-	if err := ensureBuildDeps(uiOut); err != nil {
-		return err
+func ensureKernelHeaders(uiOut *ui.UI, prompter *ui.Prompter) error {
+	out, err := sys.Output("uname", "-r")
+	if err != nil {
+		return fmt.Errorf("failed to get kernel version: %w", err)
 	}
-	// Install Kernel Module via DKMS
-	uiOut.Info("Cloning amneziawg-linux-kernel-module...")
-	tmpDir := "/tmp/amneziawg-kernel-src"
-	srcDir := "/usr/src/amneziawg-1.0.0"
-	os.RemoveAll(tmpDir)
-	os.RemoveAll(srcDir)
+	kernelVersion := strings.TrimSpace(out)
+	headerPath := fmt.Sprintf("/lib/modules/%s/build", kernelVersion)
 
-	if err := sys.Run("git", "clone", "https://github.com/amnezia-vpn/amneziawg-linux-kernel-module.git", tmpDir); err != nil {
-		return fmt.Errorf("failed to clone kernel module: %w", err)
+	if _, err := os.Stat(headerPath); err == nil {
+		return nil
 	}
 
-	// Only copy the contents of 'src' directory to /usr/src/amneziawg-1.0.0
-	// DKMS expects dkms.conf to be in the root of the source directory
-	uiOut.Info("Preparing DKMS source directory...")
-	if err := sys.Run("cp", "-r", filepath.Join(tmpDir, "src"), srcDir); err != nil {
-		return fmt.Errorf("failed to prepare dkms source: %w", err)
-	}
-	os.RemoveAll(tmpDir)
+	uiOut.Warn("Kernel headers for " + kernelVersion + " not found.")
 
-	uiOut.Info("Registering and building AmneziaWG via DKMS...")
-	sys.Run("dkms", "remove", "amneziawg/1.0.0", "--all") // 清理旧版本
-	if err := sys.Run("dkms", "add", "amneziawg/1.0.0"); err != nil {
-		return fmt.Errorf("dkms add failed: %w", err)
+	// Check architecture
+	archOut, _ := sys.Output("uname", "-m")
+	arch := strings.TrimSpace(archOut)
+	isArm := strings.HasPrefix(arch, "arm") || strings.HasPrefix(arch, "aarch64")
+
+	if isArm {
+		uiOut.Warn("ATTENTION: You are on an ARM platform (e.g., Raspberry Pi, Jetson, etc.).")
+		uiOut.Warn("Installing generic linux-headers might NOT work or could even be incorrect for your board.")
+		uiOut.Warn("ARM users should usually install headers via their board's specific package manager.")
+		uiOut.Warn("Examples: 'apt install raspberrypi-kernel-headers' or 'armbian-config'.")
 	}
-	if err := sys.Run("dkms", "build", "amneziawg/1.0.0"); err != nil {
-		return fmt.Errorf("dkms build failed: %w", err)
+
+	ok, err := askConfirm(prompter, "Try to install linux-headers for your kernel automatically?", !isArm)
+	if err != nil || !ok {
+		return errors.New("missing kernel headers (user declined auto-install)")
 	}
-	if err := sys.Run("dkms", "install", "amneziawg/1.0.0"); err != nil {
-		return fmt.Errorf("dkms install failed: %w", err)
+
+	uiOut.Info("Installing kernel headers...")
+	// Try specific version first
+	pkgName := "linux-headers-" + kernelVersion
+	if err := sys.Run("apt", "install", "-y", pkgName); err != nil {
+		uiOut.Warn("Failed to install " + pkgName + ", trying generic linux-headers-amd64/arm64...")
+		genericPkg := "linux-headers-amd64"
+		if strings.HasPrefix(arch, "aarch64") {
+			genericPkg = "linux-headers-arm64"
+		}
+		if err := sys.Run("apt", "install", "-y", genericPkg); err != nil {
+			return fmt.Errorf("failed to install generic headers (%s): %w", genericPkg, err)
+		}
 	}
-	uiOut.Ok("AmneziaWG kernel module installed via DKMS (Auto-update enabled)")
 	return nil
+}
+
+func installAwgModule(uiOut *ui.UI, prompter *ui.Prompter) error {
+	for {
+		if err := ensureBuildDeps(uiOut); err != nil {
+			uiOut.Error("Failed to install build dependencies: " + err.Error())
+			if ok, _ := askConfirm(prompter, "Retry installing dependencies?", true); ok {
+				continue
+			}
+			return err
+		}
+
+		if err := ensureKernelHeaders(uiOut, prompter); err != nil {
+			uiOut.Error("Kernel headers requirement failed: " + err.Error())
+			if ok, _ := askConfirm(prompter, "Retry headers check/install?", true); ok {
+				continue
+			}
+			return err
+		}
+
+		// Install Kernel Module via DKMS
+		uiOut.Info("Cloning amneziawg-linux-kernel-module...")
+		tmpDir := "/tmp/amneziawg-kernel-src"
+		srcDir := "/usr/src/amneziawg-1.0.0"
+
+		// Safety: if we are in the directory that is about to be deleted, move out
+		cwd, _ := os.Getwd()
+		if strings.HasPrefix(cwd, srcDir) || strings.HasPrefix(cwd, tmpDir) {
+			os.Chdir("/")
+		}
+
+		os.RemoveAll(tmpDir)
+		os.RemoveAll(srcDir)
+
+		if err := sys.Run("git", "clone", "https://github.com/amnezia-vpn/amneziawg-linux-kernel-module.git", tmpDir); err != nil {
+			uiOut.Error("Failed to clone kernel module: " + err.Error())
+			if ok, _ := askConfirm(prompter, "Retry cloning?", true); ok {
+				continue
+			}
+			return fmt.Errorf("failed to clone: %w", err)
+		}
+
+		uiOut.Info("Preparing DKMS source directory...")
+		if err := sys.Run("cp", "-r", filepath.Join(tmpDir, "src"), srcDir); err != nil {
+			uiOut.Error("Failed to prepare dkms source: " + err.Error())
+			if ok, _ := askConfirm(prompter, "Retry copying?", true); ok {
+				continue
+			}
+			return fmt.Errorf("failed to prepare dkms source: %w", err)
+		}
+		os.RemoveAll(tmpDir)
+
+		uiOut.Info("Registering and building AmneziaWG via DKMS...")
+		sys.Run("dkms", "remove", "amneziawg/1.0.0", "--all") // Clean up
+		if err := sys.Run("dkms", "add", "amneziawg/1.0.0"); err != nil {
+			uiOut.Error("DKMS add failed: " + err.Error())
+		} else if err := sys.Run("dkms", "build", "amneziawg/1.0.0"); err != nil {
+			uiOut.Error("DKMS build failed: " + err.Error())
+		} else if err := sys.Run("dkms", "install", "amneziawg/1.0.0"); err != nil {
+			uiOut.Error("DKMS install failed: " + err.Error())
+		} else {
+			// Success
+			uiOut.Ok("AmneziaWG kernel module installed via DKMS")
+			return nil
+		}
+
+		if ok, _ := askConfirm(prompter, "Installation failed. Retry the whole process?", true); !ok {
+			break
+		}
+	}
+	return errors.New("installation aborted by user after failure")
 }
 
 func installAwgTools(uiOut *ui.UI, prompter *ui.Prompter) error {
