@@ -366,11 +366,22 @@ func installAwgModule(uiOut *ui.UI, prompter *ui.Prompter) error {
 	}
 	// Install Kernel Module via DKMS
 	uiOut.Info("Cloning amneziawg-linux-kernel-module...")
+	tmpDir := "/tmp/amneziawg-kernel-src"
 	srcDir := "/usr/src/amneziawg-1.0.0"
+	os.RemoveAll(tmpDir)
 	os.RemoveAll(srcDir)
-	if err := sys.Run("git", "clone", "https://github.com/amnezia-vpn/amneziawg-linux-kernel-module.git", srcDir); err != nil {
+
+	if err := sys.Run("git", "clone", "https://github.com/amnezia-vpn/amneziawg-linux-kernel-module.git", tmpDir); err != nil {
 		return fmt.Errorf("failed to clone kernel module: %w", err)
 	}
+
+	// Only copy the contents of 'src' directory to /usr/src/amneziawg-1.0.0
+	// DKMS expects dkms.conf to be in the root of the source directory
+	uiOut.Info("Preparing DKMS source directory...")
+	if err := sys.Run("cp", "-r", filepath.Join(tmpDir, "src"), srcDir); err != nil {
+		return fmt.Errorf("failed to prepare dkms source: %w", err)
+	}
+	os.RemoveAll(tmpDir)
 
 	uiOut.Info("Registering and building AmneziaWG via DKMS...")
 	sys.Run("dkms", "remove", "amneziawg/1.0.0", "--all") // 清理旧版本
