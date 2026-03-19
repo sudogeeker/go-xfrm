@@ -9,7 +9,7 @@ It supports creating configurations for **IPsec/IKEv2 (XFRM via strongSwan)**, *
 - [Requirements](#requirements)
 - [Build and Run](#build-and-run)
 - [Configuration Details](#configuration-details)
-  - [IPsec/IKEv2 (XFRM)](#ipsecikev2-xfrm)
+  - [IPsec/IKEv2 (XFRM) & Static XFRM](#ipsecikev2-xfrm--static-xfrm)
   - [WireGuard & AmneziaWG](#wireguard--amneziawg)
   - [VXLAN & GRE](#vxlan--gre)
 - [License](#license)
@@ -18,13 +18,17 @@ It supports creating configurations for **IPsec/IKEv2 (XFRM via strongSwan)**, *
 
 ## Quick Start
 
-Run from GitHub (no clone, downloads latest release and runs):
+Run from GitHub (downloads latest release and runs):
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/sudogeeker/tunnel-helper/main/run.sh)
 ```
 
-By default it installs to `./bin` under your current working directory when run this way.
+To install the binary to `/usr/bin/tunnel-helper`:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/sudogeeker/tunnel-helper/main/run.sh) --install
+```
 
 Run via `go run` from GitHub:
 
@@ -81,14 +85,23 @@ It will then guide you through an interactive process to collect IP addresses, k
 
 ## Configuration Details
 
-### IPsec/IKEv2 (XFRM)
+### IPsec/IKEv2 (XFRM) & Static XFRM
 
+#### IKEv2 (XFRM via strongSwan)
 Generates three files:
 - `swanctl` connection config: `/etc/swanctl/conf.d/<ifname>.conf`
 - `swanctl` secrets config: `/etc/swanctl/conf.d/<ifname>.secrets` (PSK only)
 - XFRM interface config: `/etc/network/interfaces.d/<ifname>.cfg`
 
 Supports both **PSK (Pre-Shared Key)** and **RPK (Raw Public Key)** authentication. It automatically detects and offers strong DH groups for PFS.
+
+#### Static XFRM (Manual Keying)
+Generates a raw XFRM interface config in `/etc/network/interfaces.d/<ifname>.cfg`.
+- **No IKE daemon (strongSwan) required.**
+- **No UDP 500/4500 needed.**
+- Uses manual SPI and encryption/authentication keys.
+- Ideal for high-performance host-to-host tunnels where IKE negotiation is not desired.
+- Supports AES-GCM (Recommended) and AES-CBC + HMAC-SHA256.
 
 ### WireGuard & AmneziaWG
 
