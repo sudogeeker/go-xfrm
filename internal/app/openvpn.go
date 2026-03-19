@@ -103,10 +103,11 @@ func checkOpenVPNPackages(uiOut *ui.UI, prompter *ui.Prompter) error {
 func collectOpenVPNInputs(cfg *OpenVPNConfig, uiOut *ui.UI, prompter *ui.Prompter) error {
 	// Tunnel Name
 	name := "tun1"
-	if err := askInput(prompter, "Tunnel Name (for file naming)", &name, validateName); err != nil {
+	if err := askInput(prompter, "Tunnel name (interface: ovpn-<name>)", &name, validateName); err != nil {
 		return err
 	}
 	cfg.Name = name
+	cfg.Iface = "ovpn-" + name
 
 	// Role
 	roleChoice := "1"
@@ -167,13 +168,6 @@ func collectOpenVPNInputs(cfg *OpenVPNConfig, uiOut *ui.UI, prompter *ui.Prompte
 		}
 	}
 
-	// Interface
-	iface := "ovpn0"
-	if err := askInput(prompter, "Interface Name", &iface, validateDeviceName); err != nil {
-		return err
-	}
-	cfg.Iface = iface
-
 	// Inner IPs
 	localInner := "10.8.0.1"
 	remoteInner := "10.8.0.2"
@@ -192,7 +186,7 @@ func collectOpenVPNInputs(cfg *OpenVPNConfig, uiOut *ui.UI, prompter *ui.Prompte
 
 	// MTU
 	mtu := "1420"
-	if err := askInput(prompter, "MTU (e.g., 1420)", &mtu, validateNumber); err != nil {
+	if err := askInput(prompter, "MTU", &mtu, validateNumber); err != nil {
 		return err
 	}
 	cfg.MTU = mtu
@@ -219,12 +213,12 @@ func generateOpenVPNCredentials(cfg *OpenVPNConfig, uiOut *ui.UI, prompter *ui.P
 	}
 
 	// RPK Mode
-	cfg.RPKLocalCertPath = filepath.Join(baseDir, cfg.Name+".crt")
-	cfg.RPKLocalKeyPath = filepath.Join(baseDir, cfg.Name+".key")
+	cfg.RPKLocalCertPath = filepath.Join(baseDir, cfg.Iface+".crt")
+	cfg.RPKLocalKeyPath = filepath.Join(baseDir, cfg.Iface+".key")
 
 	if !fileExists(cfg.RPKLocalCertPath) || !fileExists(cfg.RPKLocalKeyPath) {
 		uiOut.Info("Generating local self-signed certificate for Peer Fingerprint...")
-		subj := fmt.Sprintf("/CN=ovpn-%s", cfg.Name)
+		subj := fmt.Sprintf("/CN=%s", cfg.Iface)
 		cmd := fmt.Sprintf("openssl req -x509 -newkey ec:<(openssl ecparam -name prime256v1) -keyout %s -out %s -days 3650 -nodes -subj %s", cfg.RPKLocalKeyPath, cfg.RPKLocalCertPath, subj)
 		if err := sys.Run("bash", "-c", cmd); err != nil {
 			return fmt.Errorf("failed to generate local cert/key: %w", err)
@@ -262,10 +256,10 @@ func writeOpenVPNConfig(cfg *OpenVPNConfig, uiOut *ui.UI) error {
 	if cfg.Role == "initiator" {
 		baseDir = "/etc/openvpn/client"
 	}
-	cfg.ConfPath = filepath.Join(baseDir, cfg.Name+".conf")
+	cfg.ConfPath = filepath.Join(baseDir, cfg.Iface+".conf")
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("# OpenVPN Configuration: %s (%s)\n", cfg.Name, cfg.Role))
+	b.WriteString(fmt.Sprintf("# OpenVPN Configuration: %s (%s)\n", cfg.Iface, cfg.Role))
 	b.WriteString(fmt.Sprintf("dev %s\n", cfg.Iface))
 	b.WriteString("dev-type tun\n")
 
@@ -358,9 +352,9 @@ func printOpenVPNNextSteps(cfg *OpenVPNConfig, uiOut *ui.UI) {
 	uiOut.HR()
 	uiOut.Title("Next Steps")
 
-	serviceName := fmt.Sprintf("openvpn-server@%s", cfg.Name)
+	serviceName := fmt.Sprintf("openvpn-server@%s", cfg.Iface)
 	if cfg.Role == "initiator" {
-		serviceName = fmt.Sprintf("openvpn-client@%s", cfg.Name)
+		serviceName = fmt.Sprintf("openvpn-client@%s", cfg.Iface)
 	}
 
 	fmt.Fprintf(uiOut.Out, "  systemctl enable --now %s\n", serviceName)
