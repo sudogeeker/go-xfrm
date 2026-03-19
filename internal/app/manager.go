@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/sudogeeker/tunnel-helper/internal/sys"
@@ -84,8 +85,10 @@ func manageTunnel(uiOut *ui.UI, prompter *ui.Prompter, t ManagedTunnel) error {
 		case "down":
 			bringTunnelDown(uiOut, t)
 		case "edit":
-			if err := editTunnelConfig(uiOut, prompter, t); err != nil {
-				uiOut.Warn(err.Error())
+			if err := structuredEditTunnel(uiOut, prompter, t); err != nil {
+				if err != ErrAborted {
+					uiOut.Warn(err.Error())
+				}
 			}
 		case "delete":
 			ok, err := askConfirm(prompter, fmt.Sprintf("Delete config files and tear down %s?", t.Interface), false)
@@ -279,6 +282,430 @@ func bringTunnelDown(uiOut *ui.UI, t ManagedTunnel) {
 		}
 	}
 	uiOut.Ok("Done")
+}
+
+func structuredEditTunnel(uiOut *ui.UI, prompter *ui.Prompter, t ManagedTunnel) error {
+	options := []ui.Option{
+		{Label: "1) Interactive Edit (Change Fields)", Value: "interactive"},
+		{Label: "2) Manual Edit (Open in Editor)", Value: "manual"},
+		{Label: "0) Back", Value: "back"},
+	}
+
+	choice := "interactive"
+	if err := askSelectRaw(prompter, "Edit Mode", options, &choice); err != nil {
+		return err
+	}
+
+	if choice == "back" {
+		return nil
+	}
+
+	if choice == "manual" {
+		return editTunnelConfig(uiOut, prompter, t)
+	}
+
+	// Interactive edit
+	var err error
+	switch t.Type {
+	case "WireGuard", "AmneziaWG":
+		err = editWgLikeTunnel(uiOut, prompter, t)
+	case "VXLAN", "GRE", "StaticXFRM":
+		err = editIfupdownTunnel(uiOut, prompter, t)
+	case "XFRM":
+		err = editXfrmTunnel(uiOut, prompter, t)
+	default:
+		uiOut.Warn("Interactive edit not supported for " + t.Type)
+		return editTunnelConfig(uiOut, prompter, t)
+	}
+
+	if err != nil {
+		return err
+	}
+
+	// Restart interface if changed
+	ok, err := askConfirm(prompter, "Configuration updated. Restart interface now?", true)
+	if err != nil {
+		return err
+	}
+	if ok {
+		bringTunnelDown(uiOut, t)
+		bringTunnelUp(uiOut, t)
+	}
+
+	return nil
+}
+
+func editWgLikeTunnel(uiOut *ui.UI, prompter *ui.Prompter, t ManagedTunnel) error {
+	content, err := os.ReadFile(t.MainConfig)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(string(content), "\n")
+
+	fields := []struct {
+		Label string
+		Key   string
+		Value string
+	}{
+		{"Address", "Address", ""},
+		{"ListenPort", "ListenPort", ""},
+		{"MTU", "MTU", ""},
+		{"Endpoint", "Endpoint", ""},
+		{"PersistentKeepalive", "PersistentKeepalive", ""},
+		{"PublicKey (Remote)", "PublicKey", ""},
+	}
+
+	// 如果是 AmneziaWG，增加混淆参数
+	if t.Type == "AmneziaWG" {
+		fields = append(fields,
+			struct{ Label, Key, Value string }{"Jc (Junk Packets)", "Jc", ""},
+			struct{ Label, Key, Value string }{"Jmin", "Jmin", ""},
+			struct{ Label, Key, Value string }{"Jmax", "Jmax", ""},
+			struct{ Label, Key, Value string }{"S1 (Init Padding)", "S1", ""},
+			struct{ Label, Key, Value string }{"S2 (Resp Padding)", "S2", ""},
+			struct{ Label, Key, Value string }{"H1 (Header)", "H1", ""},
+			struct{ Label, Key, Value string }{"H2", "H2", ""},
+			struct{ Label, Key, Value string }{"H3", "H3", ""},
+			struct{ Label, Key, Value string }{"H4", "H4", ""},
+		)
+	}
+
+	// Basic parser
+	for i, f := range fields {
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(strings.ToLower(trimmed), strings.ToLower(f.Key)) && strings.Contains(trimmed, "=") {
+				parts := strings.SplitN(trimmed, "=", 2)
+				fields[i].Value = strings.TrimSpace(parts[1])
+			}
+		}
+	}
+
+	opts := make([]ui.Option, len(fields)+1)
+	for i, f := range fields {
+		opts[i] = ui.Option{Label: fmt.Sprintf("%s: %s", f.Label, f.Value), Value: fmt.Sprintf("%d", i)}
+	}
+	opts[len(fields)] = ui.Option{Label: "Save and Exit", Value: "save"}
+
+	for {
+		choice := ""
+		if err := askSelectRaw(prompter, "Select field to change", opts, &choice); err != nil {
+			return err
+		}
+
+		if choice == "save" {
+			break
+		}
+
+		idx := 0
+		fmt.Sscanf(choice, "%d", &idx)
+		f := &fields[idx]
+
+		newVal := f.Value
+		if err := askInput(prompter, "Enter new value for "+f.Label, &newVal, nil); err != nil {
+			return err
+		}
+		f.Value = strings.TrimSpace(newVal)
+		opts[idx].Label = fmt.Sprintf("%s: %s", f.Label, f.Value)
+	}
+
+	// Reconstruct or update
+	var resultLines []string
+	updatedKeys := make(map[string]bool)
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.Contains(trimmed, "=") {
+			parts := strings.SplitN(trimmed, "=", 2)
+			key := strings.TrimSpace(parts[0])
+
+			foundField := -1
+			for i, f := range fields {
+				if strings.EqualFold(key, f.Key) {
+					foundField = i
+					break
+				}
+			}
+
+			if foundField >= 0 {
+				f := fields[foundField]
+				updatedKeys[f.Key] = true
+				if f.Value != "" {
+					indent := ""
+					if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+						indent = line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+					}
+					resultLines = append(resultLines, fmt.Sprintf("%s%s = %s", indent, key, f.Value))
+				}
+				// If f.Value is empty, we skip this line (effectively deleting it)
+				continue
+			}
+		}
+		resultLines = append(resultLines, line)
+	}
+
+	// Add missing keys that have values
+	for _, f := range fields {
+		if f.Value != "" && !updatedKeys[f.Key] {
+			// Add to appropriate section
+			section := "[Interface]"
+			if f.Key == "Endpoint" || f.Key == "PersistentKeepalive" || f.Key == "PublicKey" {
+				section = "[Peer]"
+			}
+
+			newResult := make([]string, 0, len(resultLines)+1)
+			added := false
+			for _, line := range resultLines {
+				newResult = append(newResult, line)
+				if strings.TrimSpace(line) == section && !added {
+					newResult = append(newResult, fmt.Sprintf("%s = %s", f.Key, f.Value))
+					added = true
+				}
+			}
+			if !added {
+				newResult = append(newResult, section, fmt.Sprintf("%s = %s", f.Key, f.Value))
+			}
+			resultLines = newResult
+		}
+	}
+
+	// Post-processing: No Endpoint -> No Keepalive (Extra safety)
+	hasEndpoint := false
+	for _, f := range fields {
+		if f.Key == "Endpoint" && f.Value != "" {
+			hasEndpoint = true
+			break
+		}
+	}
+
+	var finalLines []string
+	for _, line := range resultLines {
+		if !hasEndpoint && strings.Contains(strings.ToLower(line), "persistentkeepalive") {
+			continue
+		}
+		finalLines = append(finalLines, line)
+	}
+
+	return os.WriteFile(t.MainConfig, []byte(strings.Join(finalLines, "\n")), 0600)
+}
+
+func editIfupdownTunnel(uiOut *ui.UI, prompter *ui.Prompter, t ManagedTunnel) error {
+	content, err := os.ReadFile(t.MainConfig)
+	if err != nil {
+		return err
+	}
+	text := string(content)
+
+	type field struct {
+		Label string
+		Regex *regexp.Regexp
+		Value string
+		Key   string // 用于在命令行中定位
+	}
+
+	fields := []field{
+		{"Local Underlay", regexp.MustCompile(`local\s+([^\s]+)`), "", "local"},
+		{"Remote Underlay", regexp.MustCompile(`remote\s+([^\s]+)`), "", "remote"},
+		{"Inner CIDR", regexp.MustCompile(`replace\s+([^\s/]+/[0-9]+)`), "", "replace"},
+		{"MTU", regexp.MustCompile(`mtu\s+([0-9]+)`), "", "mtu"},
+	}
+
+	if t.Type == "VXLAN" {
+		fields = append(fields, field{"VNI", regexp.MustCompile(`id\s+([0-9]+)`), "", "id"})
+	}
+
+	if t.Type == "StaticXFRM" {
+		// 对于 StaticXFRM，提取第一个遇到的 SPI 和 Key 作为示例（通常是成对出现的）
+		fields = append(fields,
+			field{"SPI In", regexp.MustCompile(`spi\s+(0x[0-9a-fA-F]+)`), "", "spi"},
+			field{"SPI Out", regexp.MustCompile(`spi\s+(0x[0-9a-fA-F]+)`), "", "spi"},
+			field{"Enc Key In", regexp.MustCompile(`0x([0-9a-fA-F]{32,})`), "", "0x"},
+			field{"Enc Key Out", regexp.MustCompile(`0x([0-9a-fA-F]{32,})`), "", "0x"},
+		)
+	}
+
+	// 初始提取
+	for i, f := range fields {
+		all := f.Regex.FindAllStringSubmatch(text, -1)
+		matchIdx := 0
+		// 对于 In/Out 方向的字段，尝试取不同的索引
+		if strings.Contains(f.Label, "Out") && len(all) > 1 {
+			matchIdx = 1
+		}
+		if len(all) > matchIdx && len(all[matchIdx]) > 1 {
+			fields[i].Value = all[matchIdx][1]
+		}
+	}
+
+	opts := make([]ui.Option, len(fields)+1)
+	for i, f := range fields {
+		opts[i] = ui.Option{Label: fmt.Sprintf("%s: %s", f.Label, f.Value), Value: fmt.Sprintf("%d", i)}
+	}
+	opts[len(fields)] = ui.Option{Label: "Save and Exit", Value: "save"}
+
+	for {
+		choice := ""
+		if err := askSelectRaw(prompter, "Select field to change", opts, &choice); err != nil {
+			return err
+		}
+		if choice == "save" {
+			break
+		}
+		idx := 0
+		fmt.Sscanf(choice, "%d", &idx)
+		f := &fields[idx]
+
+		newVal := f.Value
+		if err := askInput(prompter, "Enter new value for "+f.Label, &newVal, nil); err != nil {
+			return err
+		}
+
+		oldVal := f.Value
+		newVal = strings.TrimSpace(newVal)
+		if newVal == "" || newVal == oldVal {
+			continue
+		}
+
+		// 执行替换逻辑
+		// 对于 interfaces 文件，我们必须非常小心。如果一个值（比如 IP）出现了多次，
+		// 且它在不同的上下文（比如 src 和 dst）中，直接全局替换可能会出错。
+		// 但由于我们的隧道配置通常是点对点的，且 local/remote 是成对出现的，
+		// 我们可以通过寻找前缀来辅助定位。
+
+		if f.Key != "" && f.Key != "0x" {
+			// 尝试匹配 "key oldVal" 并替换为 "key newVal"
+			pattern := regexp.MustCompile(`(` + regexp.QuoteMeta(f.Key) + `\s+)` + regexp.QuoteMeta(oldVal))
+			// 如果是 In/Out 方向，只替换特定的那一个
+			if strings.Contains(f.Label, "In") || strings.Contains(f.Label, "Out") {
+				allMatches := pattern.FindAllStringIndex(text, -1)
+				targetIdx := 0
+				if strings.Contains(f.Label, "Out") && len(allMatches) > 1 {
+					targetIdx = 1
+				}
+				if len(allMatches) > targetIdx {
+					m := allMatches[targetIdx]
+					// 重新构建 text
+					prefixMatch := pattern.FindStringSubmatch(text[m[0]:m[1]])
+					text = text[:m[0]] + prefixMatch[1] + newVal + text[m[1]:]
+				}
+			} else {
+				// 普通字段，替换所有
+				text = pattern.ReplaceAllString(text, `${1}`+newVal)
+			}
+		} else {
+			// 对于 Key 等没有明确短前缀的，使用更长的正则匹配替换
+			text = strings.ReplaceAll(text, oldVal, newVal)
+		}
+
+		f.Value = newVal
+		opts[idx].Label = fmt.Sprintf("%s: %s", f.Label, f.Value)
+	}
+
+	return os.WriteFile(t.MainConfig, []byte(text), 0644)
+}
+
+func editXfrmTunnel(uiOut *ui.UI, prompter *ui.Prompter, t ManagedTunnel) error {
+	connContent, err := os.ReadFile(t.MainConfig)
+	if err != nil {
+		return err
+	}
+	connText := string(connContent)
+
+	fields := []struct {
+		Label string
+		Regex *regexp.Regexp
+		Value string
+		File  string
+	}{
+		{"Local Underlay", regexp.MustCompile(`local_addrs\s*=\s*([^\s\n]+)`), "", t.MainConfig},
+		{"Remote Underlay", regexp.MustCompile(`remote_addrs\s*=\s*([^\s\n]+)`), "", t.MainConfig},
+		{"Local ID", regexp.MustCompile(`(?s)local\s*\{[^}]*id\s*=\s*([^\s\n"}]+)`), "", t.MainConfig},
+		{"Remote ID", regexp.MustCompile(`(?s)remote\s*\{[^}]*id\s*=\s*([^\s\n"}]+)`), "", t.MainConfig},
+	}
+
+	for i, f := range fields {
+		m := f.Regex.FindStringSubmatch(connText)
+		if len(m) > 1 {
+			fields[i].Value = strings.Trim(m[1], " \"\t\r")
+		}
+	}
+
+	// Add Inner CIDR from .cfg file
+	var cfgFile string
+	for _, f := range t.ExtraFiles {
+		if strings.HasSuffix(f, ".cfg") {
+			cfgFile = f
+			break
+		}
+	}
+
+	if cfgFile != "" {
+		cfgContent, _ := os.ReadFile(cfgFile)
+		cfgText := string(cfgContent)
+		m := regexp.MustCompile(`replace\s+([^\s/]+/[0-9]+)`).FindStringSubmatch(cfgText)
+		val := ""
+		if len(m) > 1 {
+			val = m[1]
+		}
+		fields = append(fields, struct {
+			Label string
+			Regex *regexp.Regexp
+			Value string
+			File  string
+		}{"Inner CIDR", regexp.MustCompile(`replace\s+([^\s/]+/[0-9]+)`), val, cfgFile})
+	}
+
+	opts := make([]ui.Option, len(fields)+1)
+	for i, f := range fields {
+		opts[i] = ui.Option{Label: fmt.Sprintf("%s: %s", f.Label, f.Value), Value: fmt.Sprintf("%d", i)}
+	}
+	opts[len(fields)] = ui.Option{Label: "Save and Exit", Value: "save"}
+
+	for {
+		choice := ""
+		if err := askSelectRaw(prompter, "Select field to change", opts, &choice); err != nil {
+			return err
+		}
+		if choice == "save" {
+			break
+		}
+		idx := 0
+		fmt.Sscanf(choice, "%d", &idx)
+		f := &fields[idx]
+		newVal := f.Value
+		if err := askInput(prompter, "Enter new value for "+f.Label, &newVal, nil); err != nil {
+			return err
+		}
+
+		oldVal := f.Value
+		newVal = strings.TrimSpace(newVal)
+		if newVal == "" || newVal == oldVal {
+			continue
+		}
+
+		if f.File == t.MainConfig {
+			// Update swanctl connection file
+			// We need to be careful with IDs as they are inside blocks
+			m := f.Regex.FindStringSubmatchIndex(connText)
+			if len(m) > 1 {
+				connText = connText[:m[2]] + newVal + connText[m[3]:]
+			}
+		} else {
+			// Update .cfg file
+			cfgContent, _ := os.ReadFile(f.File)
+			cfgText := string(cfgContent)
+			m := f.Regex.FindStringSubmatchIndex(cfgText)
+			if len(m) > 1 {
+				cfgText = cfgText[:m[2]] + newVal + cfgText[m[3]:]
+				os.WriteFile(f.File, []byte(cfgText), 0644)
+			}
+		}
+
+		f.Value = newVal
+		opts[idx].Label = fmt.Sprintf("%s: %s", f.Label, f.Value)
+	}
+
+	return os.WriteFile(t.MainConfig, []byte(connText), 0644)
 }
 
 func editTunnelConfig(uiOut *ui.UI, prompter *ui.Prompter, t ManagedTunnel) error {

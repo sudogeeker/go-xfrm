@@ -281,15 +281,15 @@ func runAmneziaWG(uiOut *ui.UI, prompter *ui.Prompter) error {
 	}
 	cfg.Table = table
 
-	keepaliveDef := ""
 	if cfg.Endpoint != "" {
-		keepaliveDef = "25"
+		keepalive := "25"
+		if err := askInput(prompter, "PersistentKeepalive in seconds (0 = disable, blank = unset)", &keepalive, validateNumber); err != nil {
+			return err
+		}
+		cfg.Keepalive = keepalive
+	} else {
+		cfg.Keepalive = ""
 	}
-	keepalive := keepaliveDef
-	if err := askInput(prompter, "PersistentKeepalive in seconds (0 = disable, blank = unset)", &keepalive, validateNumber); err != nil {
-		return err
-	}
-	cfg.Keepalive = keepalive
 
 	cfg.ConfFile = filepath.Join(cfg.AwgDir, cfg.Interface+".conf")
 	if fileExists(cfg.ConfFile) {
