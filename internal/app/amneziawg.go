@@ -415,8 +415,8 @@ func ensureBuildDeps(uiOut *ui.UI) error {
 		return errors.New("apt not found; install build-essential, git, dkms manually")
 	}
 	uiOut.Info("Installing build dependencies...")
-	deps := []string{"build-essential", "git", "make", "dkms"}
-	return sys.Run("apt", "install", "-y", deps...)
+	args := []string{"install", "-y", "build-essential", "git", "make", "dkms"}
+	return sys.Run("apt", args...)
 }
 
 func installAmneziaWG(uiOut *ui.UI, prompter *ui.Prompter) error {
