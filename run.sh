@@ -4,6 +4,16 @@ set -euo pipefail
 BIN_NAME="tunnel-helper"
 
 OS="$(uname -s)"
+INSTALL_ONLY=0
+args=()
+for arg in "$@"; do
+  if [[ "$arg" == "--install" ]]; then
+    INSTALL_ONLY=1
+  else
+    args+=("$arg")
+  fi
+done
+
 if [[ "$OS" != "Linux" ]]; then
   echo "This tool supports Linux only. Detected: $OS"
   exit 1
@@ -60,17 +70,35 @@ fi
 
 chmod +x "$bin_path"
 
+if [[ "$INSTALL_ONLY" -eq 1 ]]; then
+  echo "Installing $BIN_NAME to /usr/bin..."
+  if [[ "$(id -u)" -ne 0 ]]; then
+    if command -v sudo >/dev/null 2>&1; then
+      sudo cp "$bin_path" "/usr/bin/$BIN_NAME"
+      sudo chmod +x "/usr/bin/$BIN_NAME"
+    else
+      echo "Sudo not found. Run as root to install to /usr/bin."
+      exit 1
+    fi
+  else
+    cp "$bin_path" "/usr/bin/$BIN_NAME"
+    chmod +x "/usr/bin/$BIN_NAME"
+  fi
+  echo "Installation complete. You can now run '$BIN_NAME'."
+  exit 0
+fi
+
 if [[ "${RUN_AFTER_DOWNLOAD:-1}" != "1" ]]; then
   exit 0
 fi
 
 if [[ "$(id -u)" -ne 0 ]]; then
   if command -v sudo >/dev/null 2>&1; then
-    sudo "$bin_path" "$@"
+    sudo "$bin_path" "${args[@]}"
   else
-    echo "Run as root: $bin_path $*"
+    echo "Run as root: $bin_path ${args[*]}"
     exit 1
   fi
 else
-  "$bin_path" "$@"
+  "$bin_path" "${args[@]}"
 fi
