@@ -810,7 +810,7 @@ func editOpenVPNTunnel(uiOut *ui.UI, prompter *ui.Prompter, t ManagedTunnel) err
 		{"Remote Underlay IP", regexp.MustCompile(`^remote\s+([^\s]+)`), "", "remote"},
 		{"Port", regexp.MustCompile(`^port\s+([0-9]+)`), "", "port"},
 		{"MTU", regexp.MustCompile(`^tun-mtu\s+([0-9]+)`), "", "tun-mtu"},
-		{"Inner IPs (ifconfig)", regexp.MustCompile(`^ifconfig\s+([^\n]+)`), "", "ifconfig"},
+		{"Inner IP", regexp.MustCompile(`ip addr add\s+([^\s]+)`), "", "inner"},
 		{"Peer Fingerprint", regexp.MustCompile(`^peer-fingerprint\s+"?([^"\n]+)"?`), "", "peer-fingerprint"},
 	}
 
@@ -818,7 +818,7 @@ func editOpenVPNTunnel(uiOut *ui.UI, prompter *ui.Prompter, t ManagedTunnel) err
 	for i, f := range fields {
 		for _, line := range lines {
 			trimmed := strings.TrimSpace(line)
-			if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			if trimmed == "" || (strings.HasPrefix(trimmed, "#") && f.Key != "peer-fingerprint") {
 				continue
 			}
 			m := f.Regex.FindStringSubmatch(trimmed)
@@ -874,16 +874,18 @@ func editOpenVPNTunnel(uiOut *ui.UI, prompter *ui.Prompter, t ManagedTunnel) err
 			if f.Value == "" {
 				continue
 			}
-			// If commented out peer-fingerprint, replace it
 			if f.Key == "peer-fingerprint" && strings.Contains(trimmed, "peer-fingerprint") {
 				newLines = append(newLines, fmt.Sprintf("%s \"%s\"", f.Key, f.Value))
 				updatedFields[f.Key] = true
 				replaced = true
 				break
 			}
-			// Regular replacement if matches pattern
 			if f.Regex.MatchString(trimmed) {
-				if f.Key == "peer-fingerprint" {
+				if f.Key == "inner" {
+					// Handle special case for 'up' script line
+					newLine := f.Regex.ReplaceAllString(line, "ip addr add "+f.Value)
+					newLines = append(newLines, newLine)
+				} else if f.Key == "peer-fingerprint" {
 					newLines = append(newLines, fmt.Sprintf("%s \"%s\"", f.Key, f.Value))
 				} else {
 					newLines = append(newLines, fmt.Sprintf("%s %s", f.Key, f.Value))
@@ -896,17 +898,6 @@ func editOpenVPNTunnel(uiOut *ui.UI, prompter *ui.Prompter, t ManagedTunnel) err
 
 		if !replaced {
 			newLines = append(newLines, line)
-		}
-	}
-
-	// Add missing fields if they weren't in the file
-	for _, f := range fields {
-		if f.Value != "" && !updatedFields[f.Key] {
-			if f.Key == "peer-fingerprint" {
-				newLines = append(newLines, fmt.Sprintf("%s \"%s\"", f.Key, f.Value))
-			} else {
-				newLines = append(newLines, fmt.Sprintf("%s %s", f.Key, f.Value))
-			}
 		}
 	}
 

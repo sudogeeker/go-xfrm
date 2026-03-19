@@ -18,8 +18,7 @@ type OpenVPNConfig struct {
 	LocalUnder           string
 	RemoteUnder          string
 	Iface                string
-	LocalInner           string
-	RemoteInner          string
+	LocalInner           string // CIDR format or single IP
 	MTU                  string
 	DCO                  bool
 	AuthMethod           string // "rpk"
@@ -73,8 +72,6 @@ func checkOpenVPNPackages(uiOut *ui.UI, prompter *ui.Prompter) error {
 	}
 
 	if len(missing) == 0 {
-		// Try to load module
-		sys.Run("modprobe", "ovpn-dco")
 		return nil
 	}
 
@@ -94,7 +91,6 @@ func checkOpenVPNPackages(uiOut *ui.UI, prompter *ui.Prompter) error {
 			return fmt.Errorf("failed to install packages: %w", err)
 		}
 		uiOut.Ok("Packages installed successfully")
-		sys.Run("modprobe", "ovpn-dco")
 	}
 
 	return nil
@@ -139,7 +135,11 @@ func collectOpenVPNInputs(cfg *OpenVPNConfig, uiOut *ui.UI, prompter *ui.Prompte
 
 	// Port
 	port := "1194"
-	if err := askInput(prompter, "Port", &port, validateNumber); err != nil {
+	portPrompt := "Listen Port"
+	if cfg.Role == "initiator" {
+		portPrompt = "Remote Port (to connect to)"
+	}
+	if err := askInput(prompter, portPrompt, &port, validateNumber); err != nil {
 		return err
 	}
 	cfg.Port = port
@@ -168,21 +168,22 @@ func collectOpenVPNInputs(cfg *OpenVPNConfig, uiOut *ui.UI, prompter *ui.Prompte
 		}
 	}
 
-	// Inner IPs
-	localInner := "10.8.0.1"
-	remoteInner := "10.8.0.2"
-	if cfg.Role == "initiator" {
-		localInner = "10.8.0.2"
-		remoteInner = "10.8.0.1"
+	// Inner IP
+	insideEnv := strings.TrimSpace(os.Getenv("TUNNEL_INSIDE_ADDR"))
+	if insideEnv != "" {
+		innerAddr, _, err := parseTunnelInsideAddrEnv(insideEnv)
+		if err != nil {
+			return err
+		}
+		cfg.LocalInner = innerAddr
+		uiOut.Info("Inner address from TUNNEL_INSIDE_ADDR: " + cfg.LocalInner)
+	} else {
+		localInner := "10.8.0.1/24"
+		if err := askInput(prompter, "Local Inner IP (e.g., 10.8.0.1/24 or fe80::1/64)", &localInner, requireNonEmpty); err != nil {
+			return err
+		}
+		cfg.LocalInner = localInner
 	}
-	if err := askInput(prompter, "Local Inner IP (e.g., 10.8.0.1)", &localInner, requireNonEmpty); err != nil {
-		return err
-	}
-	cfg.LocalInner = localInner
-	if err := askInput(prompter, "Remote Inner IP (e.g., 10.8.0.2)", &remoteInner, requireNonEmpty); err != nil {
-		return err
-	}
-	cfg.RemoteInner = remoteInner
 
 	// MTU
 	mtu := "1420"
@@ -283,11 +284,13 @@ func writeOpenVPNConfig(cfg *OpenVPNConfig, uiOut *ui.UI) error {
 		}
 	} else {
 		b.WriteString(fmt.Sprintf("remote %s %s\n", cfg.RemoteUnder, cfg.Port))
-		// Optional local port binding could be added, but usually clients use dynamic port
 		b.WriteString("nobind\n")
 	}
 
-	b.WriteString(fmt.Sprintf("ifconfig %s %s\n", cfg.LocalInner, cfg.RemoteInner))
+	// Use ifconfig-noexec + up script to avoid configuring a peer/remote IP in the config
+	b.WriteString("ifconfig-noexec\n")
+	ipCmd := fmt.Sprintf("/usr/bin/ip addr add %s dev $dev && /usr/bin/ip link set dev $dev up", cfg.LocalInner)
+	b.WriteString(fmt.Sprintf("up \"/bin/sh -c '%s'\"\n", ipCmd))
 
 	// Performance Optimizations
 	b.WriteString("sndbuf 0\n")
@@ -298,7 +301,6 @@ func writeOpenVPNConfig(cfg *OpenVPNConfig, uiOut *ui.UI) error {
 	}
 	b.WriteString("txqueuelen 10000\n")
 
-	// Allow remote peer to use a dynamic source port or IP (crucial for NAT/ephemeral ports)
 	b.WriteString("float\n")
 
 	// Modern Ciphers
@@ -345,7 +347,7 @@ func printOpenVPNNextSteps(cfg *OpenVPNConfig, uiOut *ui.UI) {
 	uiOut.Title("Configuration Summary")
 	fmt.Fprintf(uiOut.Out, "Role: %s\n", cfg.Role)
 	fmt.Fprintf(uiOut.Out, "Interface: %s\n", cfg.Iface)
-	fmt.Fprintf(uiOut.Out, "Inner IP: %s -> %s\n", cfg.LocalInner, cfg.RemoteInner)
+	fmt.Fprintf(uiOut.Out, "Inner IP: %s\n", cfg.LocalInner)
 	fmt.Fprintf(uiOut.Out, "Auth: %s\n", cfg.AuthMethod)
 	fmt.Fprintf(uiOut.Out, "Config File: %s\n", cfg.ConfPath)
 
@@ -360,13 +362,12 @@ func printOpenVPNNextSteps(cfg *OpenVPNConfig, uiOut *ui.UI) {
 	fmt.Fprintf(uiOut.Out, "  systemctl enable --now %s\n", serviceName)
 	fmt.Fprintf(uiOut.Out, "  systemctl status %s\n", serviceName)
 	fmt.Fprintf(uiOut.Out, "  ip addr show %s\n", cfg.Iface)
-	fmt.Fprintf(uiOut.Out, "  ping %s -I %s\n", cfg.RemoteInner, cfg.Iface)
 
 	uiOut.HR()
 	uiOut.Warn("Remote side needs:")
 	fmt.Fprintf(uiOut.Out, "  - Opposite Role (%s)\n", map[string]string{"listener": "initiator", "initiator": "listener"}[cfg.Role])
 	fmt.Fprintf(uiOut.Out, "  - Same Protocol and Port\n")
-	fmt.Fprintf(uiOut.Out, "  - Flipped Inner IPs (ifconfig %s %s)\n", cfg.RemoteInner, cfg.LocalInner)
+	fmt.Fprintf(uiOut.Out, "  - Its own Local Inner IP\n")
 	fmt.Fprintf(uiOut.Out, "  - Your SHA256 Fingerprint: %s\n", cfg.RPKLocalFingerprint)
 	if cfg.RPKRemoteFingerprint == "" {
 		fmt.Fprintf(uiOut.Out, "  ! You must also edit %s and set their fingerprint\n", cfg.ConfPath)
