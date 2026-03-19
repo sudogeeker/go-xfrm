@@ -58,16 +58,11 @@ func (u *UI) Title(s string) {
 }
 
 func (u *UI) Clear() {
-	u.ClearLines(1)
+	// 停止手动光标操作，由 Prompter (huh) 处理渲染周期
 }
 
 func (u *UI) ClearLines(n int) {
-	if u.TTY {
-		for i := 0; i < n; i++ {
-			// \033[F 移至上一行行首, \033[2K 清除全行
-			fmt.Fprint(u.Out, "\033[F\033[2K")
-		}
-	}
+	// 废弃手动擦除逻辑
 }
 
 func (u *UI) Dim(s string) {

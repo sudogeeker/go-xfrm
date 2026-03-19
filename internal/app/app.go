@@ -45,20 +45,14 @@ func Run(args []string) error {
 			{Label: "0) Exit", Value: "exit"},
 		}
 
-		uiOut.Title("tunnel-helper - VPN / Tunnel Generator")
-		if err := askSelectRaw(prompter, "Main Menu (Select an action)", options, &tunnelType); err != nil {
+		// 将全局应用名称作为菜单系统的原生 Title，让它自动随选择器刷新/销毁
+		if err := askSelectRaw(prompter, "tunnel-helper - VPN / Tunnel Generator", options, &tunnelType); err != nil {
 			// 如果在主菜单直接取消，则退出
 			if isAbortErr(err) {
 				return nil
 			}
 			return wrapAbort(err)
 		}
-
-		// 精确擦除主菜单留下的痕迹：
-		// 1. Title("tunnel-helper...")
-		// 2. askSelectRaw 的标题 "Main Menu..."
-		// 3. askSelectRaw 完成后的选择结果 "> manager"
-		uiOut.ClearLines(3)
 
 		if tunnelType == "exit" {
 			return nil
